@@ -1,0 +1,68 @@
+import os
+import subprocess
+import whisper
+import ffmpeg
+import json
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+
+# Define paths
+audio_file = "input_song.mp3"
+lyrics_file = "lyrics.txt"
+output_video = "final_visualizer.mp4"
+sora_clips_folder = "sora_clips/"
+
+# Step 1: Transcribe Audio and Sync Lyrics
+def transcribe_audio(audio_file):
+    model = whisper.load_model("small")  # Use Whisper AI for transcription
+    result = model.transcribe(audio_file)
+    return result
+
+def generate_lyric_timestamps(lyrics, transcribed_text):
+    timestamps = []
+    words = transcribed_text["segments"]
+    lyric_lines = lyrics.split("\n")
+    
+    word_idx = 0
+    for line in lyric_lines:
+        start_time = words[word_idx]["start"]
+        end_time = words[min(word_idx + len(line.split()), len(words) - 1)]["end"]
+        timestamps.append((start_time, end_time, line))
+        word_idx += len(line.split())
+    
+    return timestamps
+
+# Step 2: Load Sora Clips
+def load_sora_clips():
+    clips = []
+    for file in sorted(os.listdir(sora_clips_folder)):
+        if file.endswith(".mp4"):
+            clips.append(os.path.join(sora_clips_folder, file))
+    return clips
+
+# Step 3: Generate Video with Synced Lyrics
+def generate_visualizer(lyrics_with_timestamps, sora_clips):
+    video_clips = []
+    
+    for i, (start, end, text) in enumerate(lyrics_with_timestamps):
+        video_clip = VideoFileClip(sora_clips[i % len(sora_clips)]).subclip(0, end - start)
+        text_clip = TextClip(text, fontsize=50, color='white', size=video_clip.size)
+        text_clip = text_clip.set_position(('center', 'bottom')).set_start(start).set_duration(end - start)
+        video_clips.append(CompositeVideoClip([video_clip, text_clip]))
+    
+    final_video = CompositeVideoClip(video_clips)
+    final_video.write_videofile(output_video, codec="libx264", fps=24)
+    
+# Step 4: Run Pipeline
+def main():
+    transcribed_text = transcribe_audio(audio_file)
+    with open(lyrics_file, 'r') as f:
+        lyrics = f.read()
+    
+    lyrics_with_timestamps = generate_lyric_timestamps(lyrics, transcribed_text)
+    sora_clips = load_sora_clips()
+    
+    generate_visualizer(lyrics_with_timestamps, sora_clips)
+    print("✅ AI Song Visualizer Generated Successfully!")
+
+if __name__ == "__main__":
+    main()
